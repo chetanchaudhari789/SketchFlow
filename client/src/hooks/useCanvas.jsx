@@ -23,6 +23,7 @@ import {
   uploadElements,
 } from "../helper/element";
 import useKeys from "./useKeys";
+import { socket } from "../api/socket";
 
 export default function useCanvas() {
   const {
@@ -54,7 +55,7 @@ export default function useCanvas() {
   const [padding, setPadding] = useState(minmax(10 / scale, [0.5, 50]));
   const [cursor, setCursor] = useState("default");
   const [mouseAction, setMouseAction] = useState({ x: 0, y: 0 });
-  const [resizeOldDementions, setResizeOldDementions] = useState(null)
+  const [resizeOldDementions, setResizeOldDementions] = useState(null);
 
   const mousePosition = ({ clientX, clientY }) => {
     clientX = (clientX - translate.x * scale + scaleOffset.x) / scale;
@@ -62,12 +63,53 @@ export default function useCanvas() {
     return { clientX, clientY };
   };
 
+  // Throttle drawing events using requestAnimationFrame
+  const drawingActionQueue = useRef([]);
+  const isSending = useRef(false);
+
+  const sendDrawingActions = () => {
+    if (drawingActionQueue.current.length === 0) {
+      isSending.current = false;
+      return;
+    }
+    const action = drawingActionQueue.current.shift();
+    socket.emit("drawingAction", { action, room: window.sessionId });
+    requestAnimationFrame(sendDrawingActions);
+  };
+
+  const queueDrawingAction = (action) => {
+    drawingActionQueue.current.push(action);
+    if (!isSending.current) {
+      isSending.current = true;
+      requestAnimationFrame(sendDrawingActions);
+    }
+  };
+
+  // Listen for drawing actions from other clients
+  useEffect(() => {
+    const handleDrawingAction = (action) => {
+      if (!action) return;
+      if (action.type === "start") {
+        setElements((prev) => [...prev, action.element]);
+      } else if (action.type === "update") {
+        updateElement(action.element.id, action.element, setElements, elements, true);
+      } else if (action.type === "end") {
+        updateElement(action.element.id, action.element, setElements, elements, true);
+      }
+    };
+
+    socket.on("drawingAction", handleDrawingAction);
+    return () => {
+      socket.off("drawingAction", handleDrawingAction);
+    };
+  }, [elements, setElements]);
+
   const handleMouseDown = (event) => {
     const { clientX, clientY } = mousePosition(event);
     lockUI(true);
 
     if (inCorner) {
-      setResizeOldDementions(getElementById(selectedElement.id, elements))
+      setResizeOldDementions(getElementById(selectedElement.id, elements));
       setElements((prevState) => prevState);
       setMouseAction({ x: event.clientX, y: event.clientY });
       setCursor(cornerCursor(inCorner.slug));
@@ -123,6 +165,9 @@ export default function useCanvas() {
       selectedTool
     );
     setElements((prevState) => [...prevState, element]);
+
+    // Emit drawing start action
+    queueDrawingAction({ type: "start", element });
   };
 
   const handleMouseMove = (event) => {
@@ -155,6 +200,12 @@ export default function useCanvas() {
         elements,
         true
       );
+
+      // Emit drawing update action
+      queueDrawingAction({
+        type: "update",
+        element: { id, x2: clientX, y2: clientY },
+      });
     } else if (action == "move") {
       const { id, x1, y1, x2, y2, offsetX, offsetY } = selectedElement;
 
@@ -212,6 +263,9 @@ export default function useCanvas() {
         setSelectedTool("selection");
         setSelectedElement(lastElement);
       }
+
+      // Emit drawing end action
+      queueDrawingAction({ type: "end", element: lastElement });
     }
 
     if (action.startsWith("resize")) {
@@ -241,8 +295,6 @@ export default function useCanvas() {
 
     const zoomPositionX = 2;
     const zoomPositionY = 2;
-    // const zoomPositionX = scaleMouse ? canvas.width / scaleMouse.x : 2;
-    // const zoomPositionY = scaleMouse ? canvas.height / scaleMouse.y : 2;
 
     const scaledWidth = canvas.width * scale;
     const scaledHeight = canvas.height * scale;
