@@ -1,5 +1,5 @@
 <h1 align="center">
-	<a href="https://sketchflow.vercel.app/">
+	<a href="https://sketch-flow-flame.vercel.app/">
 		SketchFlow
 	</a>
 </h1>
@@ -9,9 +9,9 @@
 </h4>
 
 <p align="center">
-	<a href="https://sketchflow.vercel.app/">Live demo</a>
+	<a href="https://sketch-flow-flame.vercel.app/">Live demo</a>
 	•
-	<a href="https://github.com/zakaria-tl/sketchflow/archive/refs/heads/main.zip">Download</a>
+	<a href="https://github.com/chetanchaudhari789/SketchFlow">Download</a>
 </p>
 
 <div align="center">
